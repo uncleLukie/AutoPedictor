@@ -1,0 +1,8 @@
+{
+  "name": "autopredictor",
+  "version": "0.1.0",
+  "description": "My project description",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.5.0"
+  }
+}
