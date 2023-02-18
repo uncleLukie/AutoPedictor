@@ -1,90 +1,97 @@
-pragma solidity ^0.8.0;
-
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract Prediction is Ownable {
+contract PredictingGame is Ownable {
     using SafeMath for uint256;
 
-    enum Outcome { WIN, LOSS, DRAW }
-    enum Status { OPEN, CLOSED }
+    // Define the three possible outcomes for the game and pending outcome
+    enum _Outcome { WIN, LOSS, DRAW }
 
-    mapping(address => uint256) private _balances;
-    mapping(Outcome => uint256) private _totalPredictions;
-    mapping(Outcome => mapping(address => uint256)) private _predictions;
+    // Define the two possible states of prediction making
+    enum _pStatus { OPEN, CLOSED }
 
-    uint256 private _totalAmount;
+    // PlayerPrediction structure
+    struct _PlayerPrediction{
+        address payable addr;
+        _Outcome prediction;
+        uint256 amount;
+    }
 
-    Outcome public result;
-    Status public _currentStatus;
+    // Array of all player predictions for the win side;
+    _PlayerPrediction[] public _winPlayerPredictions;
 
-    uint256 public _minBet = 0.003 ether; 
+    // Array of all player predictions for the loss side;
+    _PlayerPrediction[] public _lossPlayerPredictions;
 
-    event PredictionMade(address indexed player, Outcome prediction, uint256 amount);
-    event PredictionResult(Outcome result, uint256 totalAmount);
+    // Store the total amount of ether prediction for each outcome
+    mapping(_Outcome => uint256) private _totalPredictionEther;
 
+    // Store the mapping of player addresses to their predictions
+    //mapping(address => uint256) private _playerPredictions;
+
+    // Store the current outcome of the game
+    _Outcome private _gameOutcome;
+
+    // Store the current Prediction Status
+    _pStatus private _predictionStatus;
+
+    // Store the owner of the contract
+    address payable private _owner;
+
+    // Minimum amount for prediction
+    uint256 public _minPrediction = 0.003 ether;
+
+    uint256 public _totalEther;
+
+
+    /* Opens predictions */
     function openPredictions() public onlyOwner {
-        require(_currentStatus == Status.CLOSED, "Status must be closed.");
-        _currentStatus = Status.OPEN;
-        _totalAmount = 0;
-        _totalPredictions[Outcome.WIN] = 0;
-        _totalPredictions[Outcome.LOSS] = 0;
-        _totalPredictions[Outcome.DRAW] = 0;
+        _predictionStatus = _pStatus.OPEN;
     }
 
+    /* Closes predictions */
     function closePredictions() public onlyOwner {
-        require(_currentStatus == Status.OPEN, "Status must be open.");
-        require(_totalPredictions[Outcome.WIN] > 0 && _totalPredictions[Outcome.LOSS] > 0, "At least one player must predict a win and a loss.");
-        _currentStatus = Status.CLOSED;
-        emit PredictionResult(result, _totalAmount);
+        _predictionStatus = _pStatus.CLOSED;
     }
 
-    function makePrediction(Outcome prediction) public payable {
-        require(_currentStatus == Status.OPEN, "Predictions are not open.");
-        require(prediction == Outcome.WIN || prediction == Outcome.Loss, "Invalid prediction.");
-        require(msg.value >= _minBet, "Prediction amount must be greater than minimum bet");
-        _balances[msg.sender] = _balances[msg.sender].add(msg.value);
-        _predictions[prediction][msg.sender] = _predictions[prediction][msg.sender].add(msg.value);
-        _totalPredictions[prediction] = _totalPredictions[prediction].add(msg.value);
-        _totalAmount = _totalAmount.add(msg.value);
-        emit PredictionMade(msg.sender, prediction, msg.value);
-    }
-
-    
-
-    function setResult(Outcome _result) public onlyOwner {
-        result = _result;
-        emit PredictionResult(result, _totalAmount);
-        if (result == Outcome.Draw) {
-            refund();
-        } else {
-            payout();
-        }
+    /* Sets resullt */
+    function setResult(_Outcome outcome) public onlyOwner {
+        _gameOutcome = outcome;
     }
 
     function payout() public onlyOwner {
-        require(result == Outcome.WIN || result == Outcome.LOSS, "Prediction is not in Win or Loss state.");
-        uint256 totalBet = _totalPredictions[result];
-        uint256 ownerFee = totalBet.mul(15).div(100);
-        uint256 payoutAmount = totalBet.sub(ownerFee);
-        //address[] memory winners = getWinners();
-        for (uint i = 0; i < winners.length; i++) {
-            uint256 amount = _predictions[result][winners[i]];
-            uint256 payout = amount.mul(payoutAmount).div(totalBet);
-            _balances[winners[i]] = _balances[winners[i]].add(payout);
+        require(_gameOutcome == _Outcome.WIN || _gameOutcome == _Outcome.LOSS, "Prediction is not in Win or Loss state.");
+        uint256 totalAmountToPay = _totalEther.mul(85).div(100); // 85% of the totalAmount to be paid out to winners
+        uint256 totalAmountToRefund = _totalEther.mul(15).div(100); // 15% of the totalAmount to be kept as house fee
+        
+        if (_gameOutcome == _Outcome.WIN) {
+            for (uint i = 0; i < _winPlayerPredictions; i++){
+                _PlayerPrediction memory iPrediction = _winPlayerPredictions[i];
+                address payable playerAddress = iPrediction.addr;
+                uint256 amountPredicted = iPrediction.amount;
+
+            }
+
         }
-        _balances[owner()] = _balances[owner()].add(ownerFee);
     }
 
-/*
-    function refund() public onlyOwner {
-        require(result == Outcome.DRAW, "Prediction is not in Draw state.");
-        for (uint i = 0; i < addressList.length; i++) {
-            uint256 amount = _balances[addressList[i]];
-            if (amount > 0) {
-                _balances[addressList[i]] = 0;
-                payable(addressList[i]).transfer(amount);
-            }
+    /* Allow players to make a prediction */
+    function makePrediction(_Outcome prediction) public payable {
+        require(_predictionStatus == _pStatus.OPEN, "Predictions are currently not open.");
+        require(prediction == _Outcome.WIN || prediction == _Outcome.LOSS, "Prediction must be WIN or LOSS.");
+        require(msg.value >= _minPrediction, "Prediction amount must be greater than 0.003 ether");
+        _totalPredictionEther[prediction] += msg.value;
+
+        if(prediction == _Outcome.WIN){
+            _winPlayerPredictions.push(_PlayerPrediction(payable(msg.sender), prediction, msg.value));
         }
-    }*/
+
+        else {
+            _lossPlayerPredictions.push(_PlayerPrediction(payable(msg.sender), prediction, msg.value));
+        }
+
+        _totalEther += msg.value;
+    }
 }
