@@ -56,24 +56,37 @@ contract PredictingGame is Ownable {
         _predictionStatus = _pStatus.CLOSED;
     }
 
-    /* Sets resullt */
+    /* Sets result */
     function setResult(_Outcome outcome) public onlyOwner {
         _gameOutcome = outcome;
     }
 
+    /* Pay out the winners */
     function payout() public onlyOwner {
         require(_gameOutcome == _Outcome.WIN || _gameOutcome == _Outcome.LOSS, "Prediction is not in Win or Loss state.");
-        uint256 totalAmountToPay = _totalEther.mul(85).div(100); // 85% of the totalAmount to be paid out to winners
-        uint256 totalAmountToRefund = _totalEther.mul(15).div(100); // 15% of the totalAmount to be kept as house fee
-        
+
+        (uint256 winOdds, uint256 lossOdds) = calculateOdds();
+        uint256 houseFee = _totalEther.mul(15).div(100);
+        uint256 totalAmountToPay = _totalEther.sub(houseFee);
+
         if (_gameOutcome == _Outcome.WIN) {
-            for (uint i = 0; i < _winPlayerPredictions; i++){
+            for (uint i = 0; i < _winPlayerPredictions.length; i++) {
                 _PlayerPrediction memory iPrediction = _winPlayerPredictions[i];
                 address payable playerAddress = iPrediction.addr;
                 uint256 amountPredicted = iPrediction.amount;
-
+                uint256 payoutAmount = amountPredicted.mul(totalAmountToPay).div(_totalPredictionEther[_Outcome.WIN]);
+                payoutAmount = payoutAmount.add(payoutAmount.mul(winOdds).div(100)); // Add the win odds to the payout
+                playerAddress.transfer(payoutAmount);
             }
-
+        } else if (_gameOutcome == _Outcome.LOSS) {
+            for (uint i = 0; i < _lossPlayerPredictions.length; i++) {
+                _PlayerPrediction memory iPrediction = _lossPlayerPredictions[i];
+                address payable playerAddress = iPrediction.addr;
+                uint256 amountPredicted = iPrediction.amount;
+                uint256 payoutAmount = amountPredicted.mul(totalAmountToPay).div(_totalPredictionEther[_Outcome.LOSS]);
+                payoutAmount = payoutAmount.add(payoutAmount.mul(lossOdds).div(100)); // Add the loss odds to the payout
+                playerAddress.transfer(payoutAmount);
+            }
         }
     }
 
@@ -93,5 +106,18 @@ contract PredictingGame is Ownable {
         }
 
         _totalEther += msg.value;
+    }
+
+    function calculateOdds() public view returns (uint256, uint256) {
+        uint256 totalWinEther = _totalPredictionEther[_Outcome.WIN];
+        uint256 totalLossEther = _totalPredictionEther[_Outcome.LOSS];
+
+        uint256 netWinEther = totalWinEther;
+        uint256 netLossEther = totalLossEther;
+
+        uint256 winOdds = totalLossEther == 0 ? netWinEther : netWinEther.mul(_totalEther).div(netLossEther);
+        uint256 lossOdds = totalWinEther == 0 ? netLossEther : netLossEther.mul(_totalEther).div(netWinEther);
+
+        return (winOdds, lossOdds);
     }
 }
